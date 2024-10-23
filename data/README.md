@@ -8,7 +8,7 @@ This folder contains example data from experimenting with the TCLab benchmark te
 
 Example scripts for producing all but the last data file are included in `mlid_2024/experimental_tools/`.
 
-References
+# References
 
 [Kuntz, S. J. and Rawlings, J. B. (2022).](https://ieeexplore.ieee.org/abstract/document/9867344) “Maximum likelihood estimation of linear disturbance models for offset-free model predictive control,” in American Control Conference, Atlanta, GA, June 8–10, 2022, pp. 3961– 3966.
 
