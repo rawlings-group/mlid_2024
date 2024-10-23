@@ -1,4 +1,4 @@
-# [Maximum Likelihood Identification of Linear Models with Integrating Disturbances for Offset-Free Control identification tools in Python and CasADi](https://arxiv.org/pdf/2406.03760)
+# [Maximum Likelihood Identification of Linear Models with Integrating Disturbances for Offset-Free Control](https://arxiv.org/pdf/2406.03760)
 
 This repository contains code for the paper [Kuntz and Rawlings (2024)](https://arxiv.org/pdf/2406.03760). 
 
