@@ -1,17 +1,5 @@
-# [depends] %LIB%/pem.py %LIB%/arx.py %LIB%/ssid.py %LIB%/regression.py
-
-# ARX vs PEM for a first order system
-#
-# Experiment 1:
-# - DONE Small sample SISO ID
-# - TODO ~10-100(?) sample trajectories, a model fit on each
-# - TODO dynamic (a,b) and stochastic (k,re)/(q,r) biplots for each ID method.
-# - TODO time distribution for each ID method (or barplot w/ errors)
 from control import c2d, ss, tf, dlqe
 from control.matlab import lsim
-from arx import arx
-from pem import ss_predict, ml4lti, em4lti
-from ssid import nucnormid
 
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
@@ -21,6 +9,29 @@ from scipy.linalg import block_diag, solve_discrete_are
 from scipy.optimize import minimize
 from scipy.signal import dlsim
 from time import time
+
+## Force this script to start in the main repo directory
+import sys
+import os
+main_dir = os.path.dirname(os.path.abspath(__file__)) + '/..'
+os.chdir(main_dir)
+sys.path.append(main_dir)
+
+from idtools.arx import ARX
+from idtools.ssid import *
+from idtools.ssmle import *
+
+###################
+## Script config ##
+###################
+labels = [
+    'ARX',
+    f'Ho-Kalman',
+    f'NN-ARX',
+    'PEM (scipy)',
+    'PEM (CasADi)',
+    'ML'
+]
 
 # System
 k = 1
@@ -95,16 +106,8 @@ def pred_error(y, u, theta):
 
 ## Collect model fitting data
 data = {'t': tsim, 'u': u, 'y': y}
-labels = [
-    # 'ARX',
-    # f'HK-SID ($n_p$={npast})',
-    # f'NN-ARX ($n_p$={npast})',
-    # 'PEM (scipy)',
-    'PEM (CasADi)',
-    'SSKF-MLE',
-    # 'TVKF-MLE',
-    # 'EM'
-]
+init_sys = KFModel(A0, B0, C0, K=K0, Re=Re0)
+
 models = dict()
 for label in labels:
     C1 = np.eye(n)
@@ -117,13 +120,13 @@ for label in labels:
         Theta1, Sigma1, _, _ = arx(y, u, 1)
         B1 = Theta1[:, 1:]
         A1 = Theta1[:, :1]
-    elif label == f'HK-SID ($n_p$={npast})':
+    elif label == f'Ho-Kalman':
         A1, B1, C1, D1, Qw1, Rv1, Swv1 = nucnormid(
             y, u, npast, n=1, rho=0,
             cross_cov=True,
             feedthrough=True
         )
-    elif label == f'NN-ARX ($n_p$={npast})':
+    elif label == f'NN-ARX':
         A1, B1, C1, D1, Qw1, Rv1, Swv1 = \
             nucnormid(y, u, npast, n=1, rho=[30], cross_cov=True,
                       feedthrough=True)
@@ -133,22 +136,15 @@ for label in labels:
         A1 = np.array([[res.x[0]]])
         B1 = np.array([[res.x[1]]])
     elif label == 'PEM (CasADi)':
-        A1, B1, C1 = ml4lti(y, u, 1, **settings, model='dlti')
-    elif label == 'SSKF-MLE':
-        A1, B1, C1, K1, Re1 = ml4lti(y, u, 1, **settings, model='kf')
-    elif label == 'TVKF-MLE':
-        A1, B1, C1, Qw1, Rv1 = ml4lti(y, u, 1, **settings, model='slti')
-    elif label == 'EM':
-        initial_guess_em = dict(A=A0, B=B0, C=C0, Qw0=B0*varu*B0, Rv0=vary)
-        params = em4lti(y, u, 1, initial_guess=initial_guess_em, mu=1e-6,
-                        initial_state=False, initial_state_cov=False,
-                        feedthrough=False, cross_cov=False, max_iter=1000)
+        sys = observable_canonical(LSSModel(A0, B0, C0), **settings)
+        params, stats = sys.fit(u, y, **settings)
+        A1, B1, C1, *_ = (M.full() for M in params)
+    elif label == 'ML':
+        sys = observable_canonical(init_sys, **settings)
+        params, stats = sys.fit(u, y, **settings)
+        A1, B1, C1, _, _, K1, ReL1, *_ = (M.full() for M in params)
+        Re1 = ReL1@ReL1.T
 
-        A1 = params['A']
-        B1 = params['B']
-        C1 = params['C']
-        Qw1 = params['S'][:1, :1]
-        Rv1 = params['S'][1:, 1:]
     t1 = time() - t0
 
     T = C1
@@ -171,29 +167,15 @@ for label in labels:
     else:
         A1, B1, C1 = T@A1@invT, T@B1, C1@invT
 
-    if Swv1 is not None:
-        print('Canceling S matrix')
-        L = np.linalg.inv(A1) @ Swv1 @ np.linalg.inv(C1.T)
-        Qw1 -= A1@L@A1.T - L
-        Rv1 -= C1@L@C1.T
-        Swv1 -= A1@L@C1.T
-        P1 = solve_discrete_are(A1.T, C1.T, Qw1, Rv1, s=Swv1, balanced=False)
-        K1 = np.linalg.solve(C1@P1@C1.T+Rv1, (A1@P1@C1.T+Swv1).T).T
-        Re1 = C1 @ P1 @ C1.T + Rv1
-
     yhat1 = A1*y + B1*u
     r1 = y[:, 1:] - yhat1[:, :-1]
     ssq1 = r1@r1.T
     est1 = (A1, B1, 1, 0, Delta)
     _, yf1, _ = dlsim(est1, u[0, :])
 
-    # print(np.linalg.norm(y - yf1.T, ord='fro')**2)
-
     print(label + f" params:\t A ={A1[0, 0]:.4f}, B={B1[0, 0]:.4f}, "
           f"err={ssq1[0,0]:.4f}. ({t1:.4f}s)")
     if K1 is not None:
-        print(f"\t\t Qw={Qw1[0, 0]:.6f}, Rv={Rv1[0, 0]:.4f}, "
-              f"Swv={Swv1[0, 0]:.6f}")
         print(f"\t\t K ={K1[0, 0]:.4f},   Re={Re1[0, 0]:.4f}.")
         theta1 = np.array([A1[0,0], B1[0,0], K1[0,0], Re1[0,0], Qw1[0,0], Rv1[0,0]])
     else:
@@ -207,6 +189,6 @@ for label in labels:
         'err': np.absolute(theta0-theta1) / np.absolute(theta0),
     }
 
-with open('siso_mle.pickle', 'wb') as handle:
+with open('data/siso_mle.pickle', 'wb') as handle:
     pickle.dump(data, handle, protocol=-1)
     pickle.dump(models, handle, protocol=-1)

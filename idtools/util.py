@@ -17,7 +17,6 @@ def iscasadi(M):
         return (M in CASADI_TYPES) or (type(M) in CASADI_TYPES)
     except:
         return type(M) in CASADI_TYPES
-    # return (M in CASADI_TYPES) or (type(M) in CASADI_TYPES)
 
 def isnumpy(M):
     """Check if a variable or type is (of) a numpy type."""
@@ -25,7 +24,6 @@ def isnumpy(M):
         return (M in NUMPY_TYPES) or (type(M) in NUMPY_TYPES)
     except:
         return type(M) in NUMPY_TYPES
-    # return (M in NUMPY_TYPES) or (type(M) in NUMPY_TYPES)
 
 def get_dtype(*args):
     """get_dtype(arg1, arg2, ...)
@@ -51,12 +49,6 @@ def get_dtype(*args):
             return cs.DM
     else:
         return np.ndarray
-    ## OLD: Breaks if scalars are included.
-    # else:
-    #     ## Get the index of the first invalid argument.
-    #     index = np.nonzero([not (iscasadi(M) or isnumpy(M)) for M in args])[0][0]
-    #     ## Return a message about that argument.
-    #     raise TypeError(f"Invalid type encountered: {type(args[index])} at argument {index}.")
 
 
 def zeros(dims, dtype=None):
@@ -283,73 +275,6 @@ def safevertsplit(M, incr, dtype=None):
     return cs.vertsplit(M, incr) if iscasadi(dtype) else np.vsplit(M, N // incr)
 
 
-def delay_coords(Y, U, ny, nu=None, feedthrough=False, weave=False):
-    """delay_coords(Y, U, ny[, nu, feedthrough, weave])
-
-    Return the delay coordinates of the given input-output data.
-
-    By default, `nu=ny`, `feedthrough=False`, and `weave=False`. If
-    `weave=False`, returns
-
-    .. math::
-        Z = \begin{bmatrix} y(0) & z(1) & \hdots & z(N-n-1) \\
-                            \vdots & \vdots && \vdots \\
-                            y(n-1) & y(n) & \ldots & y(N-2) \\
-                            u(0) & u(1) & \hdots & u(N-n-1) \\
-                            \vdots & \vdots && \vdots \\
-                            u(n-1) & u(n) & \ldots & u(N-2) \\
-                            u(n) & u(n+1) & \ldots & u(N-1) \end{bmatrix}
-
-    where :math:`n=\max\{n_u,n_y\}`. Otherwise, if `weave=True`, returns
-
-    .. math::
-        Z = \begin{bmatrix} z(0) & z(1) & \hdots & z(N-n-1) \\
-                            z(1) & z(2) & \ldots & z(N-n) \\
-                            \vdots & \vdots && \vdots \\
-                            z(n-1) & z(n) & \ldots & z(N-2) \\
-                            u(n) & u(n+1) & \ldots & u(N-1) \end{bmatrix}
-
-    where :math:`z=[u^\top,\; y^\top]^\top` and :math:`n=n_u=n_y` (an error is
-    thrown if :math:`n_u\neq n_y`).
-
-    If `feedthrough=True`, the current input $u(k)$ is added to the delay
-    coordinates, e.g.
-
-    .. math::
-        Z \rightarrow \begin{bmatrix} Z \\ \begin{matrix} u(n) & u(n+1) & \ldots
-            & u(N-1) \end{matrix} \end{bmatrix}
-
-    """
-
-    n, N = Y.shape
-    m, M = U.shape
-    if N != M:
-        raise ValueError("Equal x and y samples expected: "
-                         f"got Nx={N} and Ny={M}.")
-
-    if nu is None:
-        nu = ny
-    ish = max([nu, ny])
-
-    if weave and ny != nu:
-            raise ValueError("For `weave=True`, requires `ny=nu`: "
-                             f"got ny={ny} and nu={nu}.")
-
-    if weave:
-        Z = np.vstack([U, Y])
-        Z = np.vstack([Z[:, ish-i-1:N-i] for i in range(ny)])
-    else:
-        Z = np.vstack(
-            [U[:, ish-i-1:N-i] for i in range(nu)] +
-            [Y[:, ish-i-1:N-i] for i in range(ny)]
-        )
-
-    if feedthrough:
-        Z = np.vstack([U[:, ish:], Z[:, :-1]])
-
-    return Z
-
-
 def _check_UY_data(U, Y, p=None, m=None):
     m1, Nu, p1, Ny = U.shape + Y.shape
     if Nu != Ny:
@@ -380,27 +305,6 @@ def _is_positive_semidefinite(M):
         np.all(np.linalg.eigvals(M) >= 0)
 
 
-def _test_delay_coords(p=3, m=2, ny=3, nu=3, N=10):
-    U = np.vstack([np.arange(N) + 10*i for i in range(m)])
-    Y = np.vstack([np.arange(N) + 10*i + 100 for i in range(p)])
-
-    Z = delay_coords(Y, U, ny, nu)
-    z00 = max([ny, nu]) - 1
-    zy0 = z00 + 100
-    assert Z[0, 0] == z00, (f"Expected z_0(0)=={z00}: "
-                            f"got z_0(0)={Z[0, 0]}")
-    assert Z[m*nu, 0] == zy0, (f"Expected z_{m*nu}(0)=={zy0}: "
-                               f"got z_{m*nu}(0)={Z[m*nu, 0]}")
-
-    Z = delay_coords(Y, U, ny, nu, feedthrough=True)
-    z00 = max([ny, nu])
-    zy0 = z00 + 99
-    assert Z[0, 0] == z00, (f"Expected z_0(0)=={z00}: "
-                            f"got z_0(0)={Z[0, 0]}")
-    assert Z[m+m*nu, 0] == zy0, (f"Expected z_{m+m*nu}(0)=={zy0}: "
-                                 f"got z_{m+m*nu}(0)={Z[m+m*nu, 0]}")
-
-
 def _func_options(with_jit=True):
     opts = {}
 
@@ -423,7 +327,7 @@ def _func_options(with_jit=True):
     return opts
 
 
-def _nlpsol_options(verbosity=None, solver='ma57', max_iter=None, tol=None,
+def _nlpsol_options(verbosity=None, solver='mumps', max_iter=None, tol=None,
                     with_jit=True):
     opts = {}
 
@@ -440,11 +344,7 @@ def _nlpsol_options(verbosity=None, solver='ma57', max_iter=None, tol=None,
 
     # linear solver info
     if solver=='ma57':
-        ## TODO Need a check function for all the coinhsl solvers.
         opts['ipopt.linear_solver'] = 'ma57'
-        # opts['ipopt.ma57_automatic_scaling'] = 'yes'
-
-    # TODO Autoscaling on/off switch, esp for MUMPS
 
     # jit compilation
     if with_jit:

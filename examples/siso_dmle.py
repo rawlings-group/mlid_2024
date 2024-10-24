@@ -1,33 +1,5 @@
-# [depends] %LIB%/pem.py %LIB%/arx.py %LIB%/ssid.py %LIB%/regression.py
-# [makes] pickle
-#
-# Methods: (1) subspace ID with disturbance MLE, (2) KF-MLE, (3) TVKF-MLE
-#
-# Experiment 3:
-# - DONE Small sample SISO ID with a disturbance model (no process disturbance)
-# - TODO ~10-100(?) sample trajectories, a model fit on each
-# - TODO dynamic (a,b) and stochastic (k,re)/(q,r) biplots for each ID method.
-# - TODO time distribution for each ID method (or barplot w/ errors)
-# - TODO control performance!!
-#
-# Experiment 4:
-# - TODO Same as exp. 3 but with a stable but uncontrollable process disturbance
-#
-# Experiment 5:
-# - TODO Vary sample size of SISO ID with a disturbance model (no process disturbance)
-# - TODO ~10-20 sample trajectories for each sample size, a model fit on each
-# - TODO model parameters and fitting time (w/ error bars) vs sample size
-# - TODO fitting time vs sample size distribution for each ID method
-#
-# Experiment 6:
-# - TODO Same as exp. 5 but with a stable but uncontrollable process disturbance
 from control import c2d, ss, tf, dlqe
 from control.matlab import lsim
-from arx import arx
-from pem import ss_predict, ml4ladm
-from ssid import nucnormid
-from ssmle import *
-from ssmle import _canonical_transform
 
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
@@ -37,6 +9,27 @@ from scipy.linalg import block_diag, solve_discrete_are
 from scipy.optimize import minimize
 from scipy.signal import dlsim
 from time import time
+
+## Force this script to start in the main repo directory
+import sys
+import os
+main_dir = os.path.dirname(os.path.abspath(__file__)) + '/..'
+os.chdir(main_dir)
+sys.path.append(main_dir)
+
+from idtools.arx import ARX
+from idtools.ssid import *
+from idtools.ssmle import *
+from idtools.ssmle import _canonical_transform
+
+###################
+## Script config ##
+###################
+labels = [
+    f'ARX',
+    f'Ho-Kalman',
+    'maximum likelihood'
+]
 
 # System
 k = 1
@@ -169,13 +162,6 @@ def estimate_disturbance_cov(X, U, Y, A, B, C, Bd, Cd):
 
 ## Collect model fitting data
 data = {'t': tsim, 'u': u, 'y': y}
-labels = [
-    f'ARX ($n_p$=1)',
-    f'Ho-Kalman ($n_p$={npast})',
-    'maximum likelihood',
-    # 'TVKF-MLE',
-    # 'EM'
-]
 models = dict()
 for label in labels:
     C1 = np.eye(n)
@@ -184,7 +170,7 @@ for label in labels:
     K1 = None
 
     t0 = time()
-    if label == f'ARX ($n_p$=1)':
+    if label == f'ARX':
         Theta1, Sigma1, _, _ = arx(y, u, 1)
         A = Theta1[:, :1]
         B = Theta1[:, 1:]
@@ -198,7 +184,7 @@ for label in labels:
 
         ## Grab final Kalman filter terms
         K, Re = disturbance_filter(A, B, C, Bd, Cd, Sd)
-    elif label == f'Ho-Kalman ($n_p$={npast})':
+    elif label == f'Ho-Kalman':
         A, B, C, D, Qw, Rv, Swv, X = nucnormid(
             y, u, npast, n=n, rho=0,
             cross_cov=False,
@@ -231,12 +217,6 @@ for label in labels:
         B = Baug[:n, :]
         C = Caug[:, :n]
         Re = ReL@ReL.T
-    # elif label == 'TVKF-MLE':
-    #     A1, B1, C1, Sd1, *_ = \
-    #         ml4ladm(y, u, 1, Bd=Bd, Cd=Cd, **settings, model='ladm')
-    # elif label == 'EM':
-    #     A1, B1, C1, Sd1, *_ = \
-    #         em4ladm(y, u, 1, Bd=Bd, Cd=Cd, **setting)
     t1 = time() - t0
 
     ## Print some results
@@ -283,7 +263,7 @@ for label in labels:
         'err': theta_error,
     }
 
-with open('siso_dmle.pickle', 'wb') as handle:
+with open('data/siso_dmle.pickle', 'wb') as handle:
     pickle.dump(data, handle, protocol=-1)
     pickle.dump(models, handle, protocol=-1)
     pickle.dump(plant, handle, protocol=-1)

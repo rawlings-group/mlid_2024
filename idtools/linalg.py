@@ -4,7 +4,7 @@ Linear algebraic helper functions.
 import casadi as cs
 import numpy as np
 
-from util import *
+from .util import *
 
 
 def hankel(M, i, j, isreversed=False, dtype=None):
@@ -21,7 +21,6 @@ def hankel(M, i, j, isreversed=False, dtype=None):
          [M(i-1), M(i), ..., M(i+j-2)]]
     """
     n = M.shape[1] // (i+j-1)
-    # TODO no ability to reverse time when directly indexing the block matrix?
     return safevertcat([M[:, k*n:(k+j)*n] for k in range(i)], dtype=dtype)
 
 
@@ -38,7 +37,6 @@ def toeplitz(M, i, isreversed=False, dtype=None):
          ...,
          [M(i-1), M(i-2), ..., M(0)]]
     """
-    # TODO splitting along time axis may be expensive when i+j-1 is large?
     M = safehsplit(M, i, dtype=dtype)
     # We actually want the time-reversed indexing for stacking purposes
     if not isreversed:

@@ -1,49 +1,17 @@
 """
-Fit stochastic linear state-space models from input-output data.
-
-lti
-lti.fit(method)
-
-control package helpers:
-lti.observer() (helper function for Kalman filter)
-lti.regulator(Q,R,M) (helper function for LQR)
-
-mpctools package helpers (I could probably do both with scipy QP solver):
-lti.mpc(Q,R,M,ub,lb,etc.) (helper function for FHOCP)
-lti.mhe(...) (helper function for MHE)
-
-METHODS:
-arx (fitted arx realization)
-armax (TODO fitted armax realization?)
-hkid (HK-reduced fitted arx realization)
-pcaid (states are low-dimensional projection of past data)
-nucnormid
-  mapid
-  n2sid
-  other basic nuc-norm methods
-subspaceid
-  cva/cca
-  n4sid
-  moesp
-  plsid (pls on the extended state-space model)
-  n2sid (nuclear norm prior on the extended state-space model)
+Subspace identification methods.
 """
-from collections.abc import Iterable
-
 import casadi as cs
 import numpy as np
 from numpy.linalg import solve, svd, cholesky, qr
 import scipy as sp
 
-from linalg import *
-from util import *
-from util import _check_UY_data, _check_XUY_data, _nlpsol_options
+from .linalg import *
+from .util import *
+from .util import _check_UY_data, _check_XUY_data, _nlpsol_options
 
-from regression import multiple_regression
-from regression import nonlinear_least_squares
-from regression import nonlinear_regression
-
-from arx import arx
+from .regression import multiple_regression
+from .arx import arx
 
 def mldivide(A, B):
     return np.linalg.solve(A, B)
@@ -201,7 +169,7 @@ def subspaceid(Y, U, npast, nfuture=None, n=None, rho=0, mu=0,
 
     try:
         n = int(n)
-    except ValueError:
+    except:
         nmax = len(s)
         Nd = Zp.shape[1]
         params = np.arange(1, nmax+1)*(2*p+m) + p*m
@@ -257,6 +225,7 @@ def nucnormid(Y, U, npast, nfuture=None, n=None, delta=1e-6, rho=1, mu=0, nu=0,
     nTheta += m if feedthrough else 0
     Theta0, Re0, Z, _ = arx(Y, U, narx, narx, feedthrough, weave=True)
 
+    from collections.abc import Iterable
     if isinstance(rho, Iterable) or rho != 0:
         if not isinstance(rho, Iterable):
             rho = [rho]

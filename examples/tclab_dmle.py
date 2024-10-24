@@ -6,15 +6,39 @@ from scipy.linalg import solve_discrete_are
 from scipy.signal import dlsim
 from time import time
 
-from ssid import subspaceid, nucnormid, jointmle
-from ssmle import *
-from ssmle import _canonical_transform
+## Force this script to start in the main repo directory
+import sys
+import os
+main_dir = os.path.dirname(os.path.abspath(__file__)) + '/..'
+os.chdir(main_dir)
+sys.path.append(main_dir)
 
-# np.set_printoptions(precision=4, suppress=True)
+from idtools.ssid import *
+from idtools.ssmle import *
+from idtools.ssmle import _canonical_transform
 
+###################
+## Script config ##
+###################
+labels = [
+    ## NOTE: The initial guess model must come before any optimization-based methods.
+    'Augmented PCA',
+    # 'Augmented CCA',
+    # 'Augmented HK',
+    'Augmented ARX',
+    ## NOTE: These are commented out so the code runs faster, but feel free to uncomment them.
+    # 'Unregularized ML',
+    # 'Regularized ML 1',
+    'Regularized ML 2',
+    # 'Constrained ML 1',
+    # 'Constrained ML 2',
+    r'Reg. \& Cons. ML',
+]
+
+guess = 'Augmented ARX'
 
 # Import and process TCLab data
-with open('../data/tclab_prbs.pickle', 'rb') as handle:
+with open('data/tclab_prbs.pickle', 'rb') as handle:
     data = pickle.load(handle)
 
 tdat = data['t']
@@ -34,10 +58,7 @@ Delta = 1
 
 ## Model fitting settings (always start with the ARX->SS number of states)
 n = 2
-# npast = 1 # 
-# npast = 2 # 
-# npast = 50 # 
-npast = 100 # 
+npast = 100
 
 dmodel = 'output'
 
@@ -104,32 +125,17 @@ def get_init_sys(est):
 
 ## Collect model fitting data
 data = {'t': tdat, 'u': udat, 'y': ydat, 'us0': us0, 'ys0': ys0}
-labels = [
-    ## NOTE: The initial guess model must come before any optimization-based methods.
-    'Augmented PCA',
-    # 'Augmented CCA',
-    # 'Augmented HK',
-    'Augmented ARX',
-    'Unregularized ML',
-    'Regularized ML 1',
-    'Regularized ML 2',
-    'Constrained ML 1',
-    'Constrained ML 2',
-    r'Reg. \& Cons. ML',
-]
-
-guess = 'Augmented ARX'
-
-
 models = {}
 for label in labels:
     ## Start and time
     print(f'Fitting {label} model...')
     t0 = time()
 
+    max_eig = None
+
     if label == 'Augmented PCA':
         ## get stuff out of tclab_kuntz_rawlings_2022.mat
-        est = loadmat('../lib/tclab_kuntz_rawlings_2022.mat')['est']
+        est = loadmat('data/tclab_kuntz_rawlings_2022.mat')['est']
         A = est['A'][0, 0]
         B = est['B'][0, 0]
         C = est['C'][0, 0]
@@ -232,8 +238,7 @@ for label in labels:
             noise_type='sqrt',
             **model_settings
         )
-        rho = 2e-3 # Just unstable
-        # rho = 5e-2 # Just too much (eigenvalue @ ~0.14 goes to ~0.19)
+        rho = 2e-3 
         tmp_settings = opt_settings.copy()
         tmp_settings['rho'] = rho
         params, stats = sys.fit(udat, ydat, **tmp_settings)
@@ -255,17 +260,7 @@ for label in labels:
             **model_settings
         )
         tmp_settings = opt_settings.copy()
-        # rho = 2e-3 # Just unstable
-        # rho = 3e-3 # Just stable
-        rho = 5e-3 # Looks good (but oscillatory)
-        # rho = 1e-2 # Still good (no longer oscillatory, eigenvalue @ ~0.14 goes to ~0.15)
-        # rho = 3e-2 # Still good (eigenvalue @ ~0.14 goes to ~0.16)
-        # rho = 5e-2 # Just too much (eigenvalue @ ~0.14 goes to ~0.19)
-        # rho = 7e-2 # Just too much (eigenvalue @ ~0.14 goes to ~0.21)
-        # rho = 1e-1 # Too much (eigenvalue @ ~0.14 goes to ~0.21)
-        # rho = 2e-1 # Too much (eigenvalue @ ~0.14 goes to ~0.26)
-        # rho = 3e-1 # Too much (eigenvalue @ ~0.14 goes to ~0.30)
-        # rho = 5e-1 # Far too much (eigenvalues look like that of guess)
+        rho = 5e-3
         tmp_settings['rho'] = rho
         params, stats = sys.fit(udat, ydat, **tmp_settings)
 
@@ -316,61 +311,6 @@ for label in labels:
         max_eig = 0.999
         alpha = 0.3
         tmp_settings = cons_settings.copy()
-        sys.add_eigenvalue_constraint(delta=1-max_eig,
-                                      epsilon=tmp_settings['epsilon'],
-                                      beta=tmp_settings['beta'], method='lmi')
-        sys.add_eigenvalue_constraint(delta=alpha,
-                                      epsilon=tmp_settings['epsilon'],
-                                      beta=tmp_settings['beta'], method='lmi',
-                                      cons_type='continuity')
-        params, stats = sys.fit(udat, ydat, **tmp_settings)
-
-        ## Unpack terms
-        Aaug, Baug, Caug, _, _, K, ReL, *_ = (M.full() for M in params)
-        A = Aaug[:n, :n]
-        B = Baug[:n, :]
-        C = Caug[:, :n]
-        Bd = Aaug[:n, n:]
-        Cd = Caug[:, n:]
-        Re = ReL@ReL.T
-    elif label == r'Constrained ML 3':
-        ## Make and fit model
-        sys = observable_canonical_dmodel(
-            get_init_sys(models[guess]['est']),
-            mtype='kf',
-            noise_type='sqrt',
-            **model_settings
-        )
-        ## Trying to push a filter eigenvalue negative
-        max_eig = 0.996
-        tmp_settings = cons_settings.copy()
-        tmp_settings['beta'] = 200
-        sys.add_eigenvalue_constraint(delta=1-max_eig,
-                                      epsilon=tmp_settings['epsilon'],
-                                      beta=tmp_settings['beta'], method='lmi')
-        params, stats = sys.fit(udat, ydat, **tmp_settings)
-
-        ## Unpack terms
-        Aaug, Baug, Caug, _, _, K, ReL, *_ = (M.full() for M in params)
-        A = Aaug[:n, :n]
-        B = Baug[:n, :]
-        C = Caug[:, :n]
-        Bd = Aaug[:n, n:]
-        Cd = Caug[:, n:]
-        Re = ReL@ReL.T
-    elif label == r'Reg. \& Cons. ML (old)':
-        ## Make and fit model
-        sys = observable_canonical_dmodel(
-            get_init_sys(models[guess]['est']),
-            mtype='kf',
-            noise_type='sqrt',
-            **model_settings
-        )
-        max_eig = 0.998
-        alpha = 0.3
-        rho = 1e-3
-        tmp_settings = cons_settings.copy()
-        tmp_settings['rho'] = rho
         sys.add_eigenvalue_constraint(delta=1-max_eig,
                                       epsilon=tmp_settings['epsilon'],
                                       beta=tmp_settings['beta'], method='lmi')
@@ -446,9 +386,6 @@ for label in labels:
     print(Re)
 
     ## Are we offset-free?
-    print(f'cond(Kd) = {np.linalg.cond(K[n:, :])}')
-    print(f'cond(ctrb(Aaug,K)) = {np.linalg.cond(ct.ctrb(Aaug,K))}')
-    print(f'cond(obsv(Aaug,Caug)) = {np.linalg.cond(ct.obsv(Aaug,Caug))}')
     T = np.block([[np.eye(A.shape[0]) - A, -Bd], [C, Cd]])
     print(f'cond(T) = {np.linalg.cond(T)}')
 
@@ -465,16 +402,6 @@ for label in labels:
 
 
     print(f"Time to fit {label} model: {t1:.4f}s")
-
-    ## Are we satisfying constraints?
-    if max_eig is not None:
-        Q = np.eye(AK.shape[0])
-        Pd = sp.linalg.solve_discrete_lyapunov(AK/max_eig, Q)
-        Pc = sp.linalg.solve_continuous_lyapunov(AK, Q)
-        print(f'tr(Pd) = {np.trace(Pd)}')
-        print(f'eigs(Pd) = {np.linalg.eigvalsh(Pd)}')
-        print(f'tr(Pc) = {np.trace(Pc)}')
-        print(f'eigs(Pc) = {np.linalg.eigvalsh(Pc)}')
 
     ## Save data
     D = np.zeros((p, m))
@@ -501,6 +428,6 @@ for label in labels:
     }
 
 ## Save the models
-with open('tclab_dmle.pickle', 'wb') as handle:
+with open('data/tclab_dmle.pickle', 'wb') as handle:
     pickle.dump(data, handle, protocol=-1)
     pickle.dump(models, handle, protocol=-1)

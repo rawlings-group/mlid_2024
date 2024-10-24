@@ -9,7 +9,6 @@ default_cycler = (
 eigs_cycler = cycler(marker=['o','s','p','*','^','>','v','<'])
 plt.rc('axes', prop_cycle=default_cycler)
 data_args = dict(lw=1)
-# setpoint_args = dict(lw=1, c='k', ls='-')
 setpoint_args = dict(label='Setpoints', lw=0.5, c='k', ls='--')
 disturbance_args = dict(label='Disturbances', lw=0.5, c='r', ls=':')
 confidence_args = dict(label=r'$3\sigma$ confidence interval', alpha=0.2)
@@ -134,8 +133,6 @@ def plot_siso(t, u, y, ysp=None, dist=None, yf=None, legend=True, figsize=(8, 6)
             nleg += 1
 
     if legend:
-        # axes[0].legend(bbox_to_anchor=(0, 1, 2.15, 0), loc="lower left",
-                          # mode="expand", ncol=nleg)
         axes[0].legend(ncol=3)
 
     axes[0].set_ylabel(r"$y$", rotation=0, labelpad=10)

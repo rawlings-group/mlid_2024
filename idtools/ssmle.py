@@ -16,7 +16,6 @@ function and the information matrix.
 """
 
 import casadi as cs
-## TODO I don't want to use control unless I inherit their methods/classes
 import control as ct
 import numpy as np
 from numpy.linalg import LinAlgError
@@ -24,25 +23,10 @@ import scipy as sp
 
 import itertools
 
-from util import iscasadi, isnumpy, get_dtype, _check_UY_data, elementary, \
-    zeros, eye, safeblock, safevertcat, safehorzcat, _nlpsol_options
-from linalg import vecs, vech, unvecs, unvech, safeqr, safelq, mldivide, \
-    mrdivide, safechol, det, logdet
+from .util import *
+from .util import _check_UY_data, _nlpsol_options
+from .linalg import *
 
-## TODO:
-## How do I call PENNON? Is it feasible to use both PENNON and IPOPT?
-##
-## How do I deal with constraints? Some will need Q+alpha I and Lii>=0
-## constraints and some will need Q(\theta)-I\alpha>=0 constraints.
-##
-## `Hard-coded` information matrices for analysis and Gauss-Newton
-## approximation.
-##
-## Hook LSSModel up to control library. Inherit from
-## ct.iosys.InputOutputSystem?
-
-## TODO class NLSSModel?
-## TODO class LGSSModel(LSSModel)
 class LSSModel(object):
     """A linear state-space model.
 
@@ -166,7 +150,6 @@ class LSSModel(object):
                                  f"`{M.shape}`. Expected `{dims}`.")
 
 
-    ## TODO unused so far.
     def _remove_useless_theta(self):
         """Checks each theta element, in reverse order, and removes those that
         do not influence the system parameters."""
@@ -227,10 +210,6 @@ class LSSModel(object):
                                with_jit=kwargs.get('with_jit', True),
                                verbosity=kwargs.get('verbosity', 5))
         self.theta0 = result['x']
-        # self.H = cs.Function('Hessian', [theta], [cs.hessian(f, theta)[0]])
-        # print(np.linalg.eigvalsh(self.H(self.theta0).full()))
-        # print(np.diag(H.full()*U.shape[1]))
-        # print(np.sqrt(np.diag(np.linalg.inv(self.H(self.theta0).full()*U.shape[1]))))
         return self.eval_params(**kwargs), stats
 
 
@@ -246,8 +225,7 @@ class LSSModel(object):
         """Get the (log-)likelihood.
 
         Gets the log-likelihood of the model for the given input-output data.
-        Also gets constraints and, TODO optionally, the information matrix for
-        Fisher's scoring algorithm.
+        Also gets constraints and their bounds.
 
         """
         ## Setting stuff up
@@ -285,10 +263,6 @@ class LSSModel(object):
             extrapenalty = cs.Function('extrapenalty', [self.theta], [extrapenalty])
             objective += extrapenalty(theta)
 
-        ## TODO Optionally, get info matrix. Base this on _get_info_matrix from
-        ## pem.py
-        # hessian, jacobian = self._get_info_matrix(objective*N, theta, errors, rho)
-
         ## Get the class constraints. Notice these are not custom so we can put
         ## them in the superclass method.
         g = cs.Function('g', [self.theta], [self.cons['g']])
@@ -308,8 +282,6 @@ class LSSModel(object):
         ## outer product.
         info = mldivide(hess, grad)
         info = info@info.T
-
-        ## TODO What to do with rho?
 
         return info
 
@@ -336,10 +308,6 @@ class LSSModel(object):
         e = y - C@x - D@u
 
         output = [xp, cs.sumsqr(safechol(W)@e)]
-        ## If we are computing the information matrix, we will also need the
-        ## errors themselves.
-        # if kwargs.get('errors', False):
-            # output += [e]
         f = cs.Function('f', [x, u, y, self.theta], output)
 
         ## Get the (optional) initial state penalty.
@@ -498,8 +466,6 @@ class LSSModel(object):
         m = M0.shape[0]
         if Qmin is None:
             Qmin = (1/beta)*np.eye(m*n)
-        # if Pmin is None:
-            # Pmin = (1/beta)*np.eye(n)
 
         ## Make the `slack` variables
         L1s = cs.SX.sym('L1', int(n*(n+1)/2))
@@ -521,12 +487,11 @@ class LSSModel(object):
                                     cs.DM(_eigs.numel(), 1) + cs.inf)}
         _cons = cs.veccat(_cons, _eigs)
 
-        ## TODO It would be best to find the nearest D-stable \(A\) matrix such
+        ## It would be best to find the nearest D-stable \(A\) matrix such
         ## that the constraint holds. For now, we'll just find some feasible
         ## \(P\) and \(Q\) such that the trace of \(P\) is minimized. This will
         ## error if such a \(P\) does not exist.
         A0 = cs.Function('A', [self.theta], [A])(self.theta0).full()
-        # P0 = LMI_region_problem(A0, M0, M1, Pmin=Pmin + (epsilon**2)*np.eye(n))
         P0 = LMI_region_problem(A0, M0, M1, Qmin=Qmin + (epsilon**2)*np.eye(m*n))
 
         if np.trace(P0) > beta:
@@ -536,8 +501,6 @@ class LSSModel(object):
 
         AP0 = A0@P0
         Q0 = np.kron(M0, P0) + np.kron(M1, AP0) + np.kron(M1.T, AP0.T)
-        # _theta0 = cs.veccat(vech(safechol(P0 - Pmin, tol=epsilon)),
-                            # vech(safechol(Q0, tol=epsilon)))
         _theta0 = cs.veccat(vech(safechol(P0, tol=epsilon)),
                             vech(safechol(Q0 - Qmin, tol=epsilon)))
 
@@ -673,9 +636,6 @@ class KFModel(LSSModel):
             if M is not None and M.shape != dims:
                 raise ValueError(f"Mismatched dimensions: `{label}` has shape "
                                  f"`{M.shape}`. Expected `{dims}`.")
-            ## TODO how do we safely check that an array is lower triangular?
-            # if label != 'K' and (not M.sparsity().is_tril):
-            #     raise ValueError(f"Mismatched sparsity: `{label}` is not lower triangular.")
 
 
     def _get_likelihood_terms(self, U, Y, **kwargs):
@@ -696,10 +656,6 @@ class KFModel(LSSModel):
         xp = A@x + B@u + K@e
 
         output = [xp, cs.sumsqr(mldivide(ReL.T, e))]
-        ## If we are computing the information matrix, we will also need the
-        ## errors themselves.
-        # if kwargs.get('errors', False):
-            # output += [e]
         f = cs.Function('f', [x, u, y, self.theta], output)
 
         ## Get the terms outside the sum, including the (optional) initial
@@ -822,22 +778,6 @@ class MinDetModel(KFModel):
         self.ReL = safechol(self.Re)
         return self.eval_params(**kwargs)
 
-        ## The hessian in this context might not work correctly; have to try if
-        ## the parameter elimination worked
-        # f, theta, g, bounds = super().likelihood(U, Y, **kwargs)
-        # nlp = {'x': theta, 'f': f, 'g': g}
-        # theta0 = kwargs.get('theta0', self.theta0)
-        # result = _solve('ipopt', nlp, theta0, bounds=bounds,
-        #                 max_iter=kwargs.get('max_iter', 100),
-        #                 with_jit=kwargs.get('with_jit', True),
-        #                 verbosity=kwargs.get('verbosity', 5))
-        # self.theta0 = result['x']
-        # self.H = cs.Function('Hessian', [theta], [cs.hessian(f, theta)[0]])
-        # print(np.linalg.eigvalsh(self.H(self.theta0).full()))
-        # # print(np.diag(H.full()*U.shape[1]))
-        # print(np.sqrt(np.diag(np.linalg.inv(self.H(self.theta0).full()*U.shape[1]))))
-        # return self.eval_params(**kwargs)
-
 
     def _get_objective_terms(self, U, Y, **kwargs):
         """Gets the parts of a prediction error model for `self.likelihood`."""
@@ -907,10 +847,6 @@ class MinDetModel(KFModel):
             extrapenalty = extrapenalty if rescale else extrapenalty/N
             extrapenalty = cs.Function('extrapenalty', [self.theta], [extrapenalty])
             objective += 2*extrapenalty(theta)
-
-        ## TODO Optionally, get info matrix. Base this on _get_info_matrix from
-        ## pem.py
-        # hessian, jacobian = self._get_info_matrix(objective*N, theta, errors, rho)
 
         ## Get the class constraints. Notice these are not custom so we can put
         ## them in the superclass method.
@@ -1065,17 +1001,6 @@ class LGSSModel(LSSModel):
                 raise ValueError(f"Mismatched dimensions: `{label}` has shape "
                                  f"`{M.shape}`. Expected `{dims}`.")
 
-        # for label, M, dims in symm_config:
-        #     try:
-        #         safechol(M)
-        #     except:
-        #         raise ValueError(f"Mismatched structure: `{label}` is not positive definite.")
-
-        ## TODO how do we safely check that an array is tril?
-        # for label, M, dim in tril_config:
-        #     if not M.sparsity().is_tril():
-        #         raise ValueError(f"Mismatched structure: `{label}` is not lower triangular.")
-
 
     def _get_noise_type(self, **kwargs):
         """Infer the noise model type from the kwargs."""
@@ -1218,10 +1143,6 @@ class LGSSModel(LSSModel):
         zp = cs.veccat(xp, vech(PLp))
 
         output = [zp, cs.sumsqr(cs.solve(ReL, e)) + 2*cs.sum1(cs.log(cs.diag(ReL)))]
-        ## If we are computing the information matrix, we will also need the
-        ## errors and error covariances themselves.
-        # if kwargs.get('errors', False):
-            # output += [e, vech(ReL)]
         f = cs.Function('f', [z, u, y, self.theta], output)
 
         ## Get the terms outside the sum.
@@ -1744,11 +1665,6 @@ def _get_disturbance_model(_disturbance_free_model):
         return _finish_params(init_sys, params, theta, theta0, **kwargs)
     return _deco
 
-## TODO Helper function to put an arbitrary system with nd simple integrators
-## into the standard linear augmented disturbance model form. This might be
-## tricky unless we restrict ourselves to diagonalizable systems. Otherwise,
-## try doing nd steps of the Schur form construction?
-
 def _get_dmodel_params(sys, B=None, dmodel='output', dtype=None):
     """Gets disturbance model parameters `(Bd,Cd)`, of the desired type
     `dmodel`, based on the dimensions of the reference model `sys` and an
@@ -1807,8 +1723,6 @@ def _transform_dmodel(sys, dmodel='output', dtype=None, tol=1e-8):
     if dtype is None:
         dtype = sys.dtype
 
-    ## TODO put system into linear augmented disturbance model form.
-    ## For now, however, we just check that the bottom nd rows of A look right.
     err = cs.sum1(cs.vec(
         cs.DM(sys.A[n:, :] - safehorzcat([zeros((nd, n), dtype=dtype),
                                           eye(nd, dtype=dtype)]))
@@ -1834,69 +1748,8 @@ def _transform_dmodel(sys, dmodel='output', dtype=None, tol=1e-8):
 
     return sys, Bd1, Cd1, nd
 
-import cvxpy as cp
-def discrete_stability_problem(A, delta=0, epsilon=1):
-    n = A.shape[0]
-    P = cp.Variable((n, n), symmetric=True)
-    constraints = [P >> epsilon*np.eye(n)]
-    constraints += [P - A@P@A.T/(1-delta)**2 >> np.eye(n)]
-    prob = cp.Problem(cp.Minimize(cp.trace(P)), constraints)
-    prob.solve()
-    return P.value
-
-def continuous_stability_problem(A, delta=0, epsilon=1):
-    n = A.shape[0]
-    P = cp.Variable((n, n), symmetric=True)
-    constraints = [P >> epsilon*np.eye(n)]
-    Ashift = A - delta*np.eye(n)
-    constraints += [Ashift@P + P@Ashift.T >> np.eye(n)]
-    prob = cp.Problem(cp.Minimize(cp.trace(P)), constraints)
-    prob.solve()
-    return P.value
-
-def conic_stability_problem(A, delta=1, M0=None):
-    n = A.shape[0]
-    if M0 is None:
-        M0 = 1e-3*np.eye(2*n)
-    P = cp.Variable((n, n), symmetric=True)
-    constraints = [P >> 0]
-    AP = A@P
-    APp = AP+AP.T
-    APm = AP-AP.T
-    M = cp.bmat([[delta*APp, APm], [APm.T, delta*APp]])
-    constraints += [M >> M0]
-    prob = cp.Problem(cp.Minimize(cp.trace(P)), constraints)
-    prob.solve(verbose=True)
-    return P.value
-
-def strip_stability_problem(A, delta=1, M0=None):
-    n = A.shape[0]
-    if M0 is None:
-        M0 = 1e-3*np.eye(2*n)
-    P = cp.Variable((n, n), symmetric=True)
-    constraints = [P >> 0]
-    AP = A@P
-    APm = AP-AP.T
-    M = cp.bmat([[delta*P, APm], [APm.T, delta*P]])
-    constraints += [M >> M0]
-    prob = cp.Problem(cp.Minimize(cp.trace(P)), constraints)
-    prob.solve(verbose=True)
-    return P.value
-
-# def LMI_region_problem(A, M0, M1, Pmin=None):
-#     n = A.shape[0]
-#     m = M0.shape[0]
-#     if Pmin is None:
-#         Pmin = 1e-3*np.eye(n)
-#     P = cp.Variable((n, n), symmetric=True)
-#     constraints = [P >> Pmin]
-#     Q = cp.kron(M0, P) + cp.kron(M1, A@P) + cp.kron(M1.T, P@A.T)
-#     constraints += [Q >> 0]
-#     prob = cp.Problem(cp.Minimize(cp.trace(P)), constraints)
-#     prob.solve(verbose=True)
-#     return P.value
-
 def LMI_region_problem(A, M0, M1, Qmin=None):
+    import cvxpy as cp
     n = A.shape[0]
     m = M0.shape[0]
     if Qmin is None:
@@ -1906,7 +1759,7 @@ def LMI_region_problem(A, M0, M1, Qmin=None):
     Q = cp.kron(M0, P) + cp.kron(M1, A@P) + cp.kron(M1.T, P@A.T)
     constraints += [Q >> Qmin]
     prob = cp.Problem(cp.Minimize(cp.trace(P)), constraints)
-    prob.solve(verbose=True)
+    prob.solve(verbose=False)
     return P.value
 
 def _solve(method, nlp, x0, bounds={}, hessian=None, max_iter=None, tol=None,
