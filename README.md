@@ -1,8 +1,8 @@
 # [Maximum Likelihood Identification of Linear Models with Integrating Disturbances for Offset-Free Control](https://arxiv.org/pdf/2406.03760)
 
 This repository contains code for the paper [Kuntz and Rawlings
-(2024)](https://arxiv.org/pdf/2406.03760) as well as other tools for
-identification experiments and algorithms.
+(2024)](https://arxiv.org/pdf/2406.03760). The example files can be used to
+fully reproduce the results from Section VI.A of this paper.
 
 # Prerequisites
 
@@ -14,11 +14,35 @@ time
 ipopt
 casadi
 cvxpy
+mosek*
+tclab**
 ```
+
+$^*$ While many of the examples can be run with the default SDP solver in
+`cvxpy`, some will fail at the initial guess generation step. The examples in
+the paper were solved with [MOSEK](https://www.mosek.com/).
+
+$^{**}$ The TCLab benchmark temperature control laboratory ([Park, et. al
+  (2020)](https://apm.byu.edu/prism/uploads/Members/2020_park_tclab.pdf)) is
+  only required if you wish to replicate the results with your own experiments.
+
+# Usage
+
+This repository is standalone and does not require installation as long as the
+prerequisites are met. To run an example file, simply run from the main
+directory,
+
+```
+python3 examples/<example>.py
+python3 figures/<example>_plot.py
+```
+
+which will generate `data/<example>.pickle` and
+`figures/<example>_plot_<number>.png` files.
 
 # Contents
 
-- `data/' contains example data from the papers [Kuntz and Rawlings
+- `data/` contains example data from the papers [Kuntz and Rawlings
   (2022)](https://ieeexplore.ieee.org/abstract/document/9867344) and [Kuntz and
   Rawlings (2024)](https://arxiv.org/pdf/2406.03760). Data files from the
   `examples/` folder are also dumped here.
@@ -27,12 +51,14 @@ cvxpy
   (2024)](https://arxiv.org/pdf/2406.03760).
 - `experimental_tools/` contains scripts for experimenting with the TCLab
   benchmark temperature control laboratory ([Park, et. al
-  (2020)](https://scholarsarchive.byu.edu/cgi/viewcontent.cgi?article=4888&context=facpub)).
+  (2020)](https://apm.byu.edu/prism/uploads/Members/2020_park_tclab.pdf)).
 - `idtools/` contains library files for the main algorithm and other
   identification tools.
 
 ## `data/`
-This folder contains example data from experimenting with the TCLab benchmark temperature control laboratory ([Park, et. al (2020)](https://scholarsarchive.byu.edu/cgi/viewcontent.cgi?article=4888&context=facpub)).
+This folder contains example data from experimenting with the TCLab benchmark
+temperature control laboratory ([Park, et. al
+(2020)](https://apm.byu.edu/prism/uploads/Members/2020_park_tclab.pdf)).
 
 - `tclab_kuntz_rawlings_2022.mat`: A file containing the model from [Kuntz and
   Rawlings (2022)](https://ieeexplore.ieee.org/abstract/document/9867344).
@@ -67,10 +93,13 @@ This folder contains example scripts for identifying stochastic linear models
   Rawlings (2024)](https://arxiv.org/pdf/2406.03760), fit to data from [Kuntz
   and Rawlings (2022)](https://ieeexplore.ieee.org/abstract/document/9867344).
 
+NOTE: `tclab_dmle.py` only runs reliably if `cvxpy` is configured with
+[MOSEK](https://www.mosek.com/).
+
 ## `experimental_tools/`
 This folder contains example scripts for experimenting with the TCLab benchmark
 temperature control laboratory ([Park, et. al
-(2020)](https://scholarsarchive.byu.edu/cgi/viewcontent.cgi?article=4888&context=facpub)).
+(2020)](https://apm.byu.edu/prism/uploads/Members/2020_park_tclab.pdf)).
 
 - `tclab_prbs.py`: An example identification experiment.
 - `tclab_cl.py`: An example closed-loop setpoint change test.
@@ -88,7 +117,8 @@ This folder contains the identification methods. The main methods files are:
 
 - `arx.py`: Autoregressive models.
 - `ssid.py`: Subspace identification.
-- `ssmle.py`: State space maximum likelihood identification and prediction error methods.
+- `ssmle.py`: State space maximum likelihood identification and prediction error
+  methods.
 
 The remaining files contain helper methods:
 
@@ -101,8 +131,17 @@ The remaining files contain helper methods:
 
 # References
 
-[Kuntz, S. J., Rawlings, J. B. (2022).](https://ieeexplore.ieee.org/abstract/document/9867344) “Maximum likelihood estimation of linear disturbance models for offset-free model predictive control,” in American Control Conference, Atlanta, GA, June 8–10, 2022, pp. 3961– 3966.
+[Kuntz, S. J., Rawlings, J. B.
+(2022).](https://ieeexplore.ieee.org/abstract/document/9867344) “Maximum
+likelihood estimation of linear disturbance models for offset-free model
+predictive control,” in American Control Conference, Atlanta, GA, June 8–10,
+2022, pp. 3961– 3966.
 
-[Kuntz, S. J., Rawlings, J. B. (2024).](https://arxiv.org/pdf/2406.03760) Maximum likelihood identification of uncontrollable linear time-invariant models for offset-free control. arXiv preprint arXiv:2406.03760.
+[Kuntz, S. J., Rawlings, J. B. (2024).](https://arxiv.org/pdf/2406.03760)
+Maximum likelihood identification of uncontrollable linear time-invariant models
+for offset-free control. arXiv preprint arXiv:2406.03760.
 
-[Park, J., Martin, R. A., Kelly, J. D., & Hedengren, J. D. (2020).](https://scholarsarchive.byu.edu/cgi/viewcontent.cgi?article=4888&context=facpub) Benchmark temperature microcontroller for process dynamics and control. Computers & Chemical Engineering, 135, 106736.
+[Park, J., Martin, R. A., Kelly, J. D., & Hedengren, J. D.
+(2020).](https://apm.byu.edu/prism/uploads/Members/2020_park_tclab.pdf)
+Benchmark temperature microcontroller for process dynamics and control.
+Computers & Chemical Engineering, 135, 106736.
