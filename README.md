@@ -38,7 +38,7 @@ python3 figures/<example>_plot.py
 ```
 
 which will generate `data/<example>.pickle` and
-`figures/<example>_plot_<number>.png` files.
+`figures/<example>_plot.pdf` files.
 
 # Contents
 
